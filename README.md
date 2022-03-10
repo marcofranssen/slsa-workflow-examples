@@ -22,6 +22,12 @@ To compile the Go app you can simply run the following command.
 go build -o bin/slsa-workflow-example .
 ```
 
+Or simply build the Docker image.
+
+```bash
+docker build -t ghcr.io/marcofranssen/slsa-workflow-example .
+```
+
 [slsa-workflow-example]: https://github.com/marcofranssen/slsa-workflow-example "SLSA GitHub actions workflow example"
 [slsa-provenance-action]: https://github.com/philips-labs/slsa-provenance-action "SLSA provenance action"
 [slsa-provenance]: https://slsa.dev/provenance "SLSA provenance specification"
