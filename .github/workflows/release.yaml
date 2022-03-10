@@ -6,6 +6,7 @@ on:
       - v**
 
 env:
+  COSIGN_EXPERIMENTAL: 1
   IMAGE_NAME: ghcr.io/marcofranssen/slsa-workflow-examples-docker
 
 jobs:
@@ -14,6 +15,9 @@ jobs:
 
     permissions:
       packages: write
+
+    outputs:
+      image-digest: ${{ steps.container_info.outputs.image-digest }}
 
     steps:
       - name: Checkout
@@ -44,3 +48,40 @@ jobs:
 
       - name: Publish Docker images
         run: docker push "${IMAGE_NAME}" --all-tags
+
+      - name: Get container info
+        id: container_info
+        run: |
+          image_digest="$(docker inspect "${IMAGE_NAME}:latest" --format '{{ index .RepoDigests 0 }}' | awk -F '@' '{ print $2 }')"
+          echo "::set-output name=image-digest::${image_digest}"
+
+  sign:
+    runs-on: ubuntu-20.04
+    needs: [docker]
+
+    permissions:
+      packages: write
+      id-token: write
+
+    env:
+      IMAGE_DIGEST: ${{ needs.docker.outputs.image-digest }}
+
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v2.1.0
+        with:
+          cosign-release: v1.6.0
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v1.14.1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sign image
+        run: |
+          cosign sign "${IMAGE_NAME}@${IMAGE_DIGEST}"
+          echo "::notice title=Verify signature::COSIGN_EXPERIMENTAL=1 cosign verify ${IMAGE_NAME}@${IMAGE_DIGEST} | jq '.[0]'"
+          echo "::notice title=Inspect signature bundle::COSIGN_EXPERIMENTAL=1 cosign verify ${IMAGE_NAME}@${IMAGE_DIGEST} | jq '.[0].optional.Bundle.Payload.body |= @base64d | .[0].optional.Bundle.Payload.body | fromjson'"
+          echo "::notice title=Inspect certificate::COSIGN_EXPERIMENTAL=1 cosign verify ${IMAGE_NAME}@${IMAGE_DIGEST} | jq -r '.[0].optional.Bundle.Payload.body |= @base64d | .[0].optional.Bundle.Payload.body | fromjson | .spec.signature.publicKey.content |= @base64d | .spec.signature.publicKey.content' | openssl x509 -text"
