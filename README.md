@@ -14,6 +14,14 @@ To do so I make use of the following tools:
 
 See the [workflows](.github/workflows) on how to utilize these tools to secure your own software supply chains. 
 
+## Go App
+
+To compile the Go app you can simply run the following command.
+
+```bash
+go build -o bin/slsa-workflow-example .
+```
+
 [slsa-workflow-example]: https://github.com/marcofranssen/slsa-workflow-example "SLSA GitHub actions workflow example"
 [slsa-provenance-action]: https://github.com/philips-labs/slsa-provenance-action "SLSA provenance action"
 [slsa-provenance]: https://slsa.dev/provenance "SLSA provenance specification"
