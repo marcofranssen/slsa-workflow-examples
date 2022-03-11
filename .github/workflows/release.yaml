@@ -18,6 +18,7 @@ jobs:
 
     outputs:
       image-digest: ${{ steps.container_info.outputs.image-digest }}
+      image-tags: ${{ steps.container_info.outputs.image-tags }}
 
     steps:
       - name: Checkout
@@ -53,7 +54,9 @@ jobs:
         id: container_info
         run: |
           image_digest="$(docker inspect "${IMAGE_NAME}:latest" --format '{{ index .RepoDigests 0 }}' | awk -F '@' '{ print $2 }')"
+          image_tags="latest,${GITHUB_REF_NAME},$(git rev-parse "${GITHUB_REF_NAME:-HEAD}")"
           echo "::set-output name=image-digest::${image_digest}"
+          echo "::set-output name=image-tags::${image_tags}"
 
   sign:
     runs-on: ubuntu-20.04
@@ -118,3 +121,45 @@ jobs:
           syft "${IMAGE_NAME}@${IMAGE_DIGEST}" -o spdx-json=sbom-spdx.json
           cosign attest --predicate sbom-spdx.json --type spdx "${IMAGE_NAME}@${IMAGE_DIGEST}"
           echo "::notice title=Verify SBOM attestation::COSIGN_EXPERIMENTAL=1 cosign verify-attestation ${IMAGE_NAME}@${IMAGE_DIGEST} | jq '.payload |= @base64d | .payload | fromjson | select(.predicateType == \"https://spdx.dev/Document\") | .predicate.Data | fromjson'"
+
+  provenance:
+    runs-on: ubuntu-20.04
+    needs: [docker]
+
+    permissions:
+      packages: write
+      id-token: write
+
+    env:
+      IMAGE_DIGEST: ${{ needs.docker.outputs.image-digest }}
+      PROVENANCE_FILE: provenance.att
+
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v2.1.0
+        with:
+          cosign-release: v1.6.0
+
+      - name: Generate provenance
+        uses: philips-labs/slsa-provenance-action@v0.7.2
+        with:
+          command: generate
+          subcommand: container
+          arguments: --repository "${IMAGE_NAME}" --output-path "${PROVENANCE_FILE}" --digest "${IMAGE_DIGEST}" --tags "${IMAGE_TAGS}"
+        env:
+          COSIGN_EXPERIMENTAL: 0
+          GITHUB_TOKEN: "${{ secrets.GITHUB_TOKEN }}"
+          IMAGE_TAGS: ${{ needs.docker.outputs.image-tags }}
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@v1.14.1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attach provenance
+        run: |
+          jq '.predicate' "${PROVENANCE_FILE}" > provenance-predicate.att
+          cosign attest --predicate provenance-predicate.att --type slsaprovenance "${IMAGE_NAME}@${IMAGE_DIGEST}"
+          echo "::notice title=Verify provenance attestation::COSIGN_EXPERIMENTAL=1 cosign verify-attestation ${IMAGE_NAME}@${IMAGE_DIGEST} | jq '.payload |= @base64d | .payload | fromjson | select(.predicateType == \"https://slsa.dev/provenance/v0.2\")'"
