@@ -1,0 +1,140 @@
+name: Release NPM
+
+on:
+  push:
+    tags:
+      - v**
+
+env:
+  COSIGN_EXPERIMENTAL: 1
+  ATT_IMAGE: ghcr.io/marcofranssen/slsa-workflow-examples-packages
+
+jobs:
+  npm-package:
+    runs-on: ubuntu-20.04
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3.0.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v3.0.0
+        with:
+          node-version: '16'
+          cache: 'yarn'
+          cache-dependency-path: examples/awesome-node-cli
+          registry-url: 'https://npm.pkg.github.com/'
+          scope: "@marcofranssen"
+
+      # This workflow assumes that package.json version was updated prior to tagging
+      # and aligned with the tag you are about to give.
+      - name: Publish npm package
+        working-directory: examples/awesome-node-cli
+        run: |
+          pkg_json=examples/awesome-node-cli/package.json
+          version_error='You need to update package.json version to be aligned with your tag (prior to tagging).'
+          yarn pack
+          yarn publish marcofranssen-awesome-node-cli-${GITHUB_REF_NAME}.tgz || \
+            (echo "::error file=${pkg_json},line=3,endLine=3,col=14,title=Version issue::${version_error}" ; exit 1)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/upload-artifact@v3.0.0
+        with:
+          name: awesome-node-cli-pkg
+          path: examples/awesome-node-cli/marcofranssen-awesome-node-cli-${{ github.ref_name }}.tgz
+
+  provenance:
+    runs-on: ubuntu-20.04
+    needs: [npm-package]
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    env:
+      PROVENANCE_FILE: provenance.att
+
+    steps:
+      - uses: actions/download-artifact@v3.0.0
+        with:
+          name: awesome-node-cli-pkg
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v2.1.0
+        with:
+          cosign-release: v1.6.0
+
+      - name: Install crane
+        run: |
+          function install_crane {
+            case "$(uname -s)" in
+              Linux*)
+                machine=Linux_x86_64
+                shasum=sha256sum
+                ;;
+              Darwin*)
+                machine=Darwin_x86_64
+                shasum=shasum
+                ;;
+            esac
+
+            curl -LO https://github.com/google/go-containerregistry/releases/download/"${CRANE_VERSION}"/go-containerregistry_${machine}.tar.gz
+            grep go-containerregistry_${machine}.tar.gz <(echo "$CRANE_CHECKSUMS") | $shasum -c -
+
+            mkdir -p bin
+            tar -xf go-containerregistry_${machine}.tar.gz crane
+            mv crane bin/
+            rm go-containerregistry_${machine}.tar.gz
+          }
+
+          if [ ! -f "${GITHUB_WORKSPACE}/bin/crane" ] ; then
+            echo "Installing crane $CRANE_VERSION"
+            install_crane
+          elif [[ ! "$("${GITHUB_WORKSPACE}/bin/crane" version)" =~ .*"$CRANE_VERSION".* ]] ; then
+            echo "Upgrading to crane $CRANE_VERSION"
+            install_crane
+          else
+            echo "Using crane '$("${GITHUB_WORKSPACE}/bin/crane" version)'"
+          fi
+
+          echo "${GITHUB_WORKSPACE}/bin" >> "$GITHUB_PATH"
+        env:
+          CRANE_VERSION: v0.8.0
+          CRANE_CHECKSUMS: |
+            185194d4ad657b3f217511006b81a148d7e02a818df0df0a490327f6bbef4823  go-containerregistry_Windows_x86_64.tar.gz
+            531ebadd28b6367b9cce8b29ee36bc13a357002cc10cbe5e1cf5bf4100b5abac  go-containerregistry_Darwin_arm64.tar.gz
+            7fe926ab7029a4545210e996e6c6b4855d6fe4302d2ac34262d740d1b3f51bab  go-containerregistry_Linux_arm64.tar.gz
+            9021d45868f5c80734d4448903c8adca8b3642cdd0c348a6a4cef5272dc6fba2  go-containerregistry_Linux_i386.tar.gz
+            afbfe58339ff7aea5733a1e4fa12bca023de7fab812769ca2945593fb8feda80  go-containerregistry_Darwin_x86_64.tar.gz
+            bb0d5cf9c343e70d6bef7d35cfe54c094b71707e3c64457adc6ff4d250f8d07d  go-containerregistry_Linux_s390x.tar.gz
+            daddbb4613bd4b7b70f57c6782c2f8e7dd90d929025f012afcd0d736e623a02b  go-containerregistry_Linux_armv6.tar.gz
+            e3f2116d2bdda1c2f2247ee2f13259d41986560d0a06a16831e37096d8ecec0e  go-containerregistry_Linux_x86_64.tar.gz
+            e9bd90a9fabfe335b5bf29d831317bdab07b6d81e0d0e48b9560632563c075c9  go-containerregistry_Windows_armv6.tar.gz
+
+      - name: Generate provenance
+        uses: philips-labs/slsa-provenance-action@v0.7.2
+        with:
+          command: generate
+          subcommand: files
+          arguments: --artifact-path marcofranssen-awesome-node-cli-${GITHUB_REF_NAME}.tgz --output-path "${PROVENANCE_FILE}"
+        env:
+          COSIGN_EXPERIMENTAL: 0
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@dd4fa0671be5250ee6f50aedf4cb05514abda2c7 #v1.14.1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload provenance
+        run: |
+          cosign upload blob --ct application/json -f "${PROVENANCE_FILE}" "${ATT_IMAGE}:${GITHUB_REF_NAME}-provenance"
+          PROV_DIGEST="$(crane digest "${ATT_IMAGE}:${GITHUB_REF_NAME}-provenance")"
+          cosign attach signature --signature <(cosign sign-blob "${PROVENANCE_FILE}") "${ATT_IMAGE}@${PROV_DIGEST}"
