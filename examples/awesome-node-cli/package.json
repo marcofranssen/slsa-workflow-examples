@@ -1,0 +1,12 @@
+{
+  "name": "@marcofranssen/awesome-node-cli",
+  "version": "0.1.4-rc",
+  "type": "module",
+  "description": "This app was build using SLSA requirements",
+  "main": "index.js",
+  "repository": "https://github.com/marcofranssen/slsa-workflow-examples",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^9.0.0"
+  }
+}
