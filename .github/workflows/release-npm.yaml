@@ -8,6 +8,7 @@ on:
 env:
   COSIGN_EXPERIMENTAL: 1
   ATT_IMAGE: ghcr.io/marcofranssen/slsa-workflow-examples-packages
+  SIGSTORE_VERSION: v1.6.0
 
 jobs:
   npm-package:
@@ -68,7 +69,7 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v2.1.0
         with:
-          cosign-release: v1.6.0
+          cosign-release: ${{ env.SIGSTORE_VERSION }}
 
       - name: Install crane
         run: |
@@ -138,3 +139,36 @@ jobs:
           cosign upload blob --ct application/json -f "${PROVENANCE_FILE}" "${ATT_IMAGE}:${GITHUB_REF_NAME}-provenance"
           PROV_DIGEST="$(crane digest "${ATT_IMAGE}:${GITHUB_REF_NAME}-provenance")"
           cosign sign "${ATT_IMAGE}@${PROV_DIGEST}"
+
+  test-attestation-fetching:
+    runs-on: ubuntu-20.04
+    needs: [provenance]
+
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v2.1.0
+        with:
+          cosign-release: ${{ env.SIGSTORE_VERSION }}
+
+      - name: Install sget
+        run: |
+          os="${RUNNER_OS,,}"
+          arch="${RUNNER_ARCH,,}"
+          [ "$arch" == "x64" ] && arch=amd64
+          curl -sSLo sget https://github.com/sigstore/cosign/releases/download/${SIGSTORE_VERSION}/sget-${os}-amd64
+          curl -sSLo sget.sig https://github.com/sigstore/cosign/releases/download/${SIGSTORE_VERSION}/sget-${os}-amd64.sig
+          curl -sSLo sigstore.pub https://github.com/sigstore/cosign/releases/download/${SIGSTORE_VERSION}/release-cosign.pub
+          cosign verify-blob --key sigstore.pub --signature sget.sig sget
+          mkdir -p /tmp/sigstore/bin
+          mv sget /tmp/sigstore/bin
+          chmod +x /tmp/sigstore/bin/sget
+          echo '/tmp/sigstore/bin' >> "${GITHUB_PATH}"
+        env:
+          COSIGN_EXPERIMENTAL: 0
+
+      - name: Fetch provenance
+        run: |
+          sget "${ATT_IMAGE}:${GITHUB_REF_NAME}-provenance" | jq '.'
+
+      - name: Notice
+        run: echo "::notice title=Attestations::See ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} on how to fetch attestations."
