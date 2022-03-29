@@ -120,26 +120,53 @@ jobs:
           echo '/tmp/sigstore/bin' >> "${GITHUB_PATH}"
         env:
           COSIGN_EXPERIMENTAL: 0
+      
+      - name: Install fatt
+        uses: philips-labs/fatt/installer-action@v0.2.0
+        with:
+          fatt-release: v0.2.0
+          install-dir: .fatt/bin
+        env:
+          COSIGN_EXPERIMENTAL: 0
+ 
+      - name: Fetch discovery file
+        run: |
+          fatt list ${ATT_IMAGE}:${GITHUB_REF_NAME}.discovery > attestations.txt
+          cat attestations.txt
+
+      - uses: actions/upload-artifact@v3.0.0
+        with:
+          name: package-attestations
+          path: attestations.txt
 
       - name: Fetch provenance
         run: |
           # grep is a workaround to fix sget bug in v1.6.0, bug is resolved in next releases
           sget "${ATT_IMAGE}:${GITHUB_REF_NAME}-provenance" | grep -v '^Certificate' | jq '.' > provenance.att
 
+      - uses: actions/upload-artifact@v3.0.0
+        with:
+          name: awesome-node-cli-sbom-via-sget
+          path: provenance.att  
+
       - name: Fetch SBOM
         run: |
           # grep is a workaround to fix sget bug in v1.6.0, bug is resolved in next releases
-          sget "${ATT_IMAGE}:${GITHUB_REF_NAME}-sbom" | grep -v '^Certificate' | jq '.' > sbom.json
+          sget "${ATT_IMAGE}:${GITHUB_REF_NAME}.sbom" | grep -v '^Certificate' | jq '.' > sbom-spdx.json
      
       - uses: actions/upload-artifact@v3.0.0
         with:
           name: awesome-node-cli-provenance-via-sget
-          path: sbom.json
+          path: sbom-spdx.json   
 
-      - uses: actions/upload-artifact@v3.0.0
-        with:
-          name: awesome-node-cli-sbom-via-sget
-          path: provenance.att     
+      - name: Example sbom traversal to get license info
+        run: |
+          echo Imagine you would have saved all 'attestations.txt' files in all your projects you can easily get all Licenses.
+          echo "${sboms}" | jq --slurp '.'
+          # grep is a workaround to fix sget bug in v1.6.0, bug is resolved in next releases
+          while IFS= read -r line ; do sget "${line}" | grep -v '^Certificate'; done \
+            <<< "$(fatt list -f '{ .IsAttestationType("sbom") }' -o oci)" \
+            | jq --slurp 'map(.packages) | flatten | map({ name: .name, version: .versionInfo, license: .licenseConcluded }) | unique'
 
       - name: Notice
         run: echo "::notice title=Attestations::See ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} on how to fetch attestations."
