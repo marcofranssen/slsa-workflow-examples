@@ -1,0 +1,98 @@
+on:
+  workflow_call:
+    inputs:
+      package:
+        required: true
+        type: string
+      package-version:
+        required: true
+        type: string
+      sigstore-version:
+        required: false
+        default: v1.6.0
+        type: string
+    secrets:
+      cosign-public-key:
+        required: true
+
+jobs:
+  test-attestation-fetching:
+    runs-on: [self-hosted, linux, X64, research]
+
+    env:
+      SIGSTORE_VERSION: ${{ inputs.sigstore-version }}
+      PACKAGE: ${{ inputs.package }}
+
+    permissions:
+      packages: read
+
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v2.1.0
+        with:
+          cosign-release: ${{ env.SIGSTORE_VERSION }}
+
+      - name: Install fatt
+        uses: philips-labs/fatt/installer-action@v0.2.0
+        with:
+          fatt-release: v0.2.0
+          install-dir: .fatt/bin # default install path does not work on selfhosted runner somehow.
+
+      - name: Install sget
+        run: |
+          os="${RUNNER_OS,,}"
+          arch="${RUNNER_ARCH,,}"
+          [ "$arch" == "x64" ] && arch=amd64
+          curl -sSLo sget https://github.com/sigstore/cosign/releases/download/${SIGSTORE_VERSION}/sget-${os}-amd64
+          curl -sSLo sget.sig https://github.com/sigstore/cosign/releases/download/${SIGSTORE_VERSION}/sget-${os}-amd64.sig
+          curl -sSLo sigstore.pub https://github.com/sigstore/cosign/releases/download/${SIGSTORE_VERSION}/release-cosign.pub
+          cosign verify-blob --key sigstore.pub --signature sget.sig sget
+          mkdir -p /tmp/sigstore/bin
+          mv sget /tmp/sigstore/bin
+          chmod +x /tmp/sigstore/bin/sget
+          echo '/tmp/sigstore/bin' >> "${GITHUB_PATH}"
+
+      - name: Login to GHCR
+        uses: docker/login-action@dd4fa0671be5250ee6f50aedf4cb05514abda2c7 #v1.14.1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install public key
+        run: echo "${{ secrets.cosign-public-key }}" > cosign.pub
+
+      - name: Fetch discovery file
+        run: |
+          fatt list --key cosign.pub ${{ inputs.package }}:${{ inputs.package-version }}.discovery > attestations.txt
+          # grep is a workaround to fix sget bug in v1.6.0, bug is resolved in next releases
+          sget --key cosign.pub "${{ inputs.package }}-provenance" | grep -v '^Certificate' | jq --slurp '.[1]' > provenance.att
+
+      - uses: actions/upload-artifact@v3.0.0
+        with:
+          name: package-provenance
+          path: attestations.txt
+
+      - name: Fetch provenance
+        run: |
+          # grep is a workaround to fix sget bug in v1.6.0, bug is resolved in next releases
+          sget --key cosign.pub "${{ inputs.package }}:${{ inputs.package-version }}.provenance" | grep -v '^Certificate' | jq --slurp '.[1]' > provenance.att
+
+      - uses: actions/upload-artifact@v3.0.0
+        with:
+          name: package-provenance
+          path: provenance.att
+
+      - name: Fetch SBOM
+        run: |
+          # grep is a workaround to fix sget bug in v1.6.0, bug is resolved in next releases
+          sget --key cosign.pub "${{ inputs.package }}:${{ inputs.package-version }}.sbom" | grep -v '^Certificate' | jq --slurp '.[1]' > sbom.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v3.0.0
+        with:
+          name: package-sbom
+          path: sbom.json
+
+      - name: Notice
+        run: echo "::notice title=Attestations::See ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} on how to fetch attestations."
