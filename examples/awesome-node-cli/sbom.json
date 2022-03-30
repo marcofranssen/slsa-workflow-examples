@@ -1,0 +1,94 @@
+{
+ "SPDXID": "SPDXRef-DOCUMENT",
+ "name": "marcofranssen-awesome-node-cli-v0.1.4-rc2.tgz",
+ "spdxVersion": "SPDX-2.2",
+ "creationInfo": {
+  "created": "2022-03-22T08:41:08.085144Z",
+  "creators": [
+   "Organization: Anchore, Inc",
+   "Tool: syft-0.41.1"
+  ],
+  "licenseListVersion": "3.16"
+ },
+ "dataLicense": "CC0-1.0",
+ "documentNamespace": "https://anchore.com/syft/file/marcofranssen-awesome-node-cli-v0.1.4-rc2.tgz-bb2c25ef-ec8c-4bb9-888f-336a5575ddde",
+ "packages": [
+  {
+   "SPDXID": "SPDXRef-47fb6bad153fc1a8",
+   "name": "@marcofranssen/awesome-node-cli",
+   "licenseConcluded": "MIT",
+   "downloadLocation": "https://github.com/marcofranssen/slsa-workflow-examples",
+   "externalRefs": [
+    {
+     "referenceCategory": "SECURITY",
+     "referenceLocator": "cpe:2.3:a:\\@marcofranssen\\/awesome-node-cli:\\@marcofranssen\\/awesome-node-cli:0.1.4-rc2:*:*:*:*:*:*:*",
+     "referenceType": "cpe23Type"
+    },
+    {
+     "referenceCategory": "SECURITY",
+     "referenceLocator": "cpe:2.3:a:\\@marcofranssen\\/awesome-node-cli:\\@marcofranssen\\/awesome_node_cli:0.1.4-rc2:*:*:*:*:*:*:*",
+     "referenceType": "cpe23Type"
+    },
+    {
+     "referenceCategory": "SECURITY",
+     "referenceLocator": "cpe:2.3:a:\\@marcofranssen\\/awesome_node_cli:\\@marcofranssen\\/awesome-node-cli:0.1.4-rc2:*:*:*:*:*:*:*",
+     "referenceType": "cpe23Type"
+    },
+    {
+     "referenceCategory": "SECURITY",
+     "referenceLocator": "cpe:2.3:a:\\@marcofranssen\\/awesome_node_cli:\\@marcofranssen\\/awesome_node_cli:0.1.4-rc2:*:*:*:*:*:*:*",
+     "referenceType": "cpe23Type"
+    },
+    {
+     "referenceCategory": "SECURITY",
+     "referenceLocator": "cpe:2.3:a:\\@marcofranssen\\/awesome-node:\\@marcofranssen\\/awesome-node-cli:0.1.4-rc2:*:*:*:*:*:*:*",
+     "referenceType": "cpe23Type"
+    },
+    {
+     "referenceCategory": "SECURITY",
+     "referenceLocator": "cpe:2.3:a:\\@marcofranssen\\/awesome-node:\\@marcofranssen\\/awesome_node_cli:0.1.4-rc2:*:*:*:*:*:*:*",
+     "referenceType": "cpe23Type"
+    },
+    {
+     "referenceCategory": "SECURITY",
+     "referenceLocator": "cpe:2.3:a:\\@marcofranssen\\/awesome_node:\\@marcofranssen\\/awesome-node-cli:0.1.4-rc2:*:*:*:*:*:*:*",
+     "referenceType": "cpe23Type"
+    },
+    {
+     "referenceCategory": "SECURITY",
+     "referenceLocator": "cpe:2.3:a:\\@marcofranssen\\/awesome_node:\\@marcofranssen\\/awesome_node_cli:0.1.4-rc2:*:*:*:*:*:*:*",
+     "referenceType": "cpe23Type"
+    },
+    {
+     "referenceCategory": "SECURITY",
+     "referenceLocator": "cpe:2.3:a:\\@marcofranssen\\/awesome:\\@marcofranssen\\/awesome-node-cli:0.1.4-rc2:*:*:*:*:*:*:*",
+     "referenceType": "cpe23Type"
+    },
+    {
+     "referenceCategory": "SECURITY",
+     "referenceLocator": "cpe:2.3:a:\\@marcofranssen\\/awesome:\\@marcofranssen\\/awesome_node_cli:0.1.4-rc2:*:*:*:*:*:*:*",
+     "referenceType": "cpe23Type"
+    },
+    {
+     "referenceCategory": "SECURITY",
+     "referenceLocator": "cpe:2.3:a:*:\\@marcofranssen\\/awesome-node-cli:0.1.4-rc2:*:*:*:*:*:*:*",
+     "referenceType": "cpe23Type"
+    },
+    {
+     "referenceCategory": "SECURITY",
+     "referenceLocator": "cpe:2.3:a:*:\\@marcofranssen\\/awesome_node_cli:0.1.4-rc2:*:*:*:*:*:*:*",
+     "referenceType": "cpe23Type"
+    },
+    {
+     "referenceCategory": "PACKAGE_MANAGER",
+     "referenceLocator": "pkg:npm/@marcofranssen/awesome-node-cli@0.1.4-rc2",
+     "referenceType": "purl"
+    }
+   ],
+   "filesAnalyzed": false,
+   "licenseDeclared": "MIT",
+   "sourceInfo": "acquired package info from installed node module manifest file: package/package.json",
+   "versionInfo": "0.1.4-rc2"
+  }
+ ]
+}

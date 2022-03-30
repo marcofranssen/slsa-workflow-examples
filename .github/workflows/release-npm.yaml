@@ -1,0 +1,174 @@
+name: Release NPM
+
+on:
+  push:
+    tags:
+      - v**
+
+env:
+  COSIGN_EXPERIMENTAL: 1
+  ATT_IMAGE: ghcr.io/marcofranssen/slsa-workflow-examples/attestations
+  PKG_NAME: awesome-node-cli
+  SIGSTORE_VERSION: v1.6.0
+
+jobs:
+  npm-package:
+    runs-on: ubuntu-20.04
+
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3.0.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v3.0.0
+        with:
+          node-version: '16'
+          cache: 'yarn'
+          cache-dependency-path: examples/awesome-node-cli
+          registry-url: 'https://npm.pkg.github.com/'
+          scope: "@marcofranssen"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v2.1.0
+        with:
+          cosign-release: ${{ env.SIGSTORE_VERSION }}
+
+      - name: Install Syft
+        uses: anchore/sbom-action/download-syft@v0.7.0
+
+      - name: Install fatt
+        uses: philips-labs/fatt/installer-action@v0.2.0
+        with:
+          fatt-release: v0.3.0
+          install-dir: .fatt/bin
+        env:
+          COSIGN_EXPERIMENTAL: 0
+          
+      # This workflow assumes that package.json version was updated prior to tagging
+      # and aligned with the tag you are about to give.
+      - name: Publish npm package
+        working-directory: examples/awesome-node-cli
+        run: |
+          pkg_json=examples/awesome-node-cli/package.json
+          version_error='You need to update package.json version to be aligned with your tag (prior to tagging).'
+          yarn pack
+          yarn publish marcofranssen-awesome-node-cli-${GITHUB_REF_NAME}.tgz || \
+            (echo "::error file=${pkg_json},line=3,endLine=3,col=14,title=Version issue::${version_error}" ; exit 1)
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SBOM
+        working-directory: examples/awesome-node-cli
+        run: syft . -o spdx-json=sbom-spdx.json
+
+      - name: Generate provenance
+        uses: philips-labs/slsa-provenance-action@v0.7.2
+        with:
+          command: generate
+          subcommand: files
+          arguments: --artifact-path examples/awesome-node-cli/marcofranssen-awesome-node-cli-${GITHUB_REF_NAME}.tgz --output-path provenance.att
+        env:
+          COSIGN_EXPERIMENTAL: 0
+
+      - name: Login to ghcr.io
+        uses: docker/login-action@dd4fa0671be5250ee6f50aedf4cb05514abda2c7 #v1.14.1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload attestations
+        run: |
+          fatt publish \
+            --repository "${ATT_IMAGE}" \
+            --tag-prefix "${PKG_NAME}" \
+            --version "${GITHUB_REF_NAME}" \
+            sbom://examples/awesome-node-cli/sbom-spdx.json \
+            provenance://provenance.att
+
+      - name: Sign attestations and discovery
+        run: |
+          cosign sign "${ATT_IMAGE}:${PKG_NAME}-${GITHUB_REF_NAME}.discovery"
+          cosign sign "${ATT_IMAGE}:${PKG_NAME}-${GITHUB_REF_NAME}.provenance"
+          cosign sign "${ATT_IMAGE}:${PKG_NAME}-${GITHUB_REF_NAME}.sbom"
+
+  test-attestation-fetching:
+    runs-on: ubuntu-20.04
+    needs: [npm-package]
+
+    steps:
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v2.1.0
+        with:
+          cosign-release: ${{ env.SIGSTORE_VERSION }}
+
+      - name: Install sget
+        run: |
+          os="${RUNNER_OS,,}"
+          arch="${RUNNER_ARCH,,}"
+          [ "$arch" == "x64" ] && arch=amd64
+          curl -sSLo sget https://github.com/sigstore/cosign/releases/download/${SIGSTORE_VERSION}/sget-${os}-amd64
+          curl -sSLo sget.sig https://github.com/sigstore/cosign/releases/download/${SIGSTORE_VERSION}/sget-${os}-amd64.sig
+          curl -sSLo sigstore.pub https://github.com/sigstore/cosign/releases/download/${SIGSTORE_VERSION}/release-cosign.pub
+          cosign verify-blob --key sigstore.pub --signature sget.sig sget
+          mkdir -p /tmp/sigstore/bin
+          mv sget /tmp/sigstore/bin
+          chmod +x /tmp/sigstore/bin/sget
+          echo '/tmp/sigstore/bin' >> "${GITHUB_PATH}"
+        env:
+          COSIGN_EXPERIMENTAL: 0
+      
+      - name: Install fatt
+        uses: philips-labs/fatt/installer-action@v0.2.0
+        with:
+          fatt-release: v0.3.0
+          install-dir: .fatt/bin
+        env:
+          COSIGN_EXPERIMENTAL: 0
+ 
+      - name: Fetch discovery file
+        run: |
+          fatt list "${ATT_IMAGE}:${PKG_NAME}-${GITHUB_REF_NAME}.discovery" > attestations.txt
+          cat attestations.txt
+
+      - uses: actions/upload-artifact@v3.0.0
+        with:
+          name: package-attestations
+          path: attestations.txt
+
+      - name: Fetch provenance
+        run: |
+          # grep is a workaround to fix sget bug in v1.6.0, bug is resolved in next releases
+          sget "${ATT_IMAGE}:${PKG_NAME}-${GITHUB_REF_NAME}-provenance" | grep -v '^Certificate' | jq '.' > provenance.att
+
+      - uses: actions/upload-artifact@v3.0.0
+        with:
+          name: awesome-node-cli-sbom-via-sget
+          path: provenance.att  
+
+      - name: Fetch SBOM
+        run: |
+          # grep is a workaround to fix sget bug in v1.6.0, bug is resolved in next releases
+          sget "${ATT_IMAGE}:${PKG_NAME}-${GITHUB_REF_NAME}.sbom" | grep -v '^Certificate' | jq '.' > sbom-spdx.json
+     
+      - uses: actions/upload-artifact@v3.0.0
+        with:
+          name: awesome-node-cli-provenance-via-sget
+          path: sbom-spdx.json   
+
+      - name: Example sbom traversal to get license info
+        run: |
+          echo Imagine you would have saved all 'attestations.txt' files in all your projects you can easily get all Licenses.
+          echo "${sboms}" | jq --slurp '.'
+          # grep is a workaround to fix sget bug in v1.6.0, bug is resolved in next releases
+          while IFS= read -r line ; do sget "${line}" | grep -v '^Certificate'; done \
+            <<< "$(fatt list -f '{ .IsAttestationType("sbom") }' -o oci)" \
+            | jq --slurp 'map(.packages) | flatten | map({ name: .name, version: .versionInfo, license: .licenseConcluded }) | unique'
+
+      - name: Notice
+        run: echo "::notice title=Attestations::See ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID} on how to fetch attestations."
