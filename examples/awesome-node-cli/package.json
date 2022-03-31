@@ -1,6 +1,6 @@
 {
   "name": "@marcofranssen/awesome-node-cli",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "type": "module",
   "description": "This app was build using SLSA requirements",
   "main": "index.js",
