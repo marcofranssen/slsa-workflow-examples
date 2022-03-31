@@ -42,13 +42,12 @@ jobs:
         uses: anchore/sbom-action/download-syft@v0.7.0
 
       - name: Install fatt
-        uses: philips-labs/fatt/installer-action@v0.2.0
+        uses: philips-labs/fatt/installer-action@v0.3.1
         with:
-          fatt-release: v0.3.0
-          install-dir: .fatt/bin
+          fatt-release: v0.3.1
         env:
           COSIGN_EXPERIMENTAL: 0
-          
+
       # This workflow assumes that package.json version was updated prior to tagging
       # and aligned with the tag you are about to give.
       - name: Publish npm package
@@ -124,10 +123,9 @@ jobs:
           COSIGN_EXPERIMENTAL: 0
       
       - name: Install fatt
-        uses: philips-labs/fatt/installer-action@v0.2.0
+        uses: philips-labs/fatt/installer-action@v0.3.1
         with:
-          fatt-release: v0.3.0
-          install-dir: .fatt/bin
+          fatt-release: v0.3.1
         env:
           COSIGN_EXPERIMENTAL: 0
  
@@ -164,7 +162,6 @@ jobs:
       - name: Example sbom traversal to get license info
         run: |
           echo Imagine you would have saved all 'attestations.txt' files in all your projects you can easily get all Licenses.
-          echo "${sboms}" | jq --slurp '.'
           # grep is a workaround to fix sget bug in v1.6.0, bug is resolved in next releases
           while IFS= read -r line ; do sget "${line}" | grep -v '^Certificate'; done \
             <<< "$(fatt list -f '{ .IsAttestationType("sbom") }' -o oci)" \
